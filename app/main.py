@@ -1,47 +1,45 @@
-import re
 from pathlib import Path
-from typing import Iterable, List
-
-from fastapi import FastAPI
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, Request
 
 app = FastAPI(title="Sanitize API")
 
+# Load banned words from: app/banned_words.txt
+BANNED_WORDS = []
 BANNED_PATH = Path(__file__).resolve().parent / "banned_words.txt"
 
-def load_banned_words() -> List[str]:
-    if not BANNED_PATH.exists():
-        return []
-    return [
-        line.strip()
-        for line in BANNED_PATH.read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    ]
+if BANNED_PATH.exists():
+    content = BANNED_PATH.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    for line in lines:
+        BANNED_WORDS.append(line)
 
-DEFAULT_BANNED = load_banned_words()
+def sanitize(text, banned_words):
+    lower_text = text.lower()
 
-def _mask_keep_first_last(matched_text: str) -> str:
-    n = len(matched_text)
-    if n <= 2:
-        return "*" * n
-    return matched_text[0] + ("*" * (n - 2)) + matched_text[-1]
+    for w in banned_words:
+        if w == "":
+            continue  # prevent infinite loop if an empty line exists
 
-def sanitize(text: str, banned_words: Iterable[str]) -> str:
-    if text is None:
-        raise ValueError("text must not be None")
+        target = w.lower()
+        idx = lower_text.find(target)
 
-    cleaned = text
-    words = [w.strip() for w in banned_words if (w or "").strip()]
+        while idx != -1:
+            original = text[idx: idx + len(w)]
 
-    for w in words:
-        pattern = re.compile(re.escape(w), re.IGNORECASE)
-        cleaned = pattern.sub(lambda m: _mask_keep_first_last(m.group(0)), cleaned)
+            if len(original) <= 2:
+                masked = "*" * len(original)
+            else:
+                masked = original[0] + ("*" * (len(original) - 2)) + original[-1]
 
-    return cleaned
+            text = text[:idx] + masked + text[idx + len(w):]
+            lower_text = text.lower()
+            idx = lower_text.find(target, idx + len(masked))
 
-class SanitizeRequest(BaseModel):
-    text: str = Field(..., min_length=1)
+    return text
 
 @app.post("/sanitize")
-def sanitize_endpoint(req: SanitizeRequest):
-    return {"cleaned": sanitize(req.text, DEFAULT_BANNED)}
+async def sanitize_endpoint(request: Request):
+    data = await request.json()
+    text = data.get("text", "")
+    cleaned = sanitize(text, BANNED_WORDS)
+    return {"cleaned": cleaned}
