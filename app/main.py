@@ -6,7 +6,9 @@ app = Flask(__name__)
 REPLACE_MAP = {
     "a": "4",
     "s": "5",
-    "i": "1"
+    "i": "1",
+    "e": "3",
+    "o": "0"
 }
 
 def replace_text_func(text):
