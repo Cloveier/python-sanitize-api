@@ -1,7 +1,7 @@
 from pathlib import Path
-from fastapi import FastAPI, Request
+from flask import Flask, request, jsonify
 
-app = FastAPI(title="Sanitize API")
+app = Flask(__name__)
 
 # Load banned words from: app/banned_words.txt
 BANNED_WORDS = []
@@ -18,7 +18,7 @@ def sanitize(text, banned_words):
 
     for w in banned_words:
         if w == "":
-            continue  # prevent infinite loop if an empty line exists
+            continue  # avoid infinite loop if there is an empty line
 
         target = w.lower()
         idx = lower_text.find(target)
@@ -38,8 +38,11 @@ def sanitize(text, banned_words):
     return text
 
 @app.post("/sanitize")
-async def sanitize_endpoint(request: Request):
-    data = await request.json()
+def sanitize_endpoint():
+    data = request.get_json(silent=True) or {}
     text = data.get("text", "")
     cleaned = sanitize(text, BANNED_WORDS)
-    return {"cleaned": cleaned}
+    return jsonify({"cleaned": cleaned})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
